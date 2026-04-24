@@ -63,7 +63,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Execution - Phase 2 Demonstration Modules
-Verify the baseline mathematical tests, games, and security failure evaluations locally natively strictly via:
+Verify the baseline mathematical tests, games, and security failure evaluations (Naive vs. Floyd collisions) locally natively strictly via the command line:
 
 ```sh
 cd backend
@@ -85,6 +85,8 @@ With the Uvicorn terminal actively spinning locally, spin up the React frontend.
 As `npm` is structurally absent contextually on this OS execution build tier natively, Phase 4 React logic was structurally engineered deliberately via natively embedded React+Babel CDN structures bound mathematically via raw HTML.
 
 Simply open the file directly in any modern browser context natively without any local webserver:
-```text
-Navigate to: file:///C:/Users/123ad/Downloads/AOS_Git/POIS_Project/frontend/index.html
-```
+1. Open Chrome, Firefox, or Edge.
+2. Select **File > Open File...** (or press Ctrl+O / Cmd+O).
+3. Navigate to and open `frontend/index.html`.
+
+You can now interact with the logical nodes, swap primitives for bidirectional mathematical proofs, and execute real encryption queries against the backend via the "Live Data Component."
