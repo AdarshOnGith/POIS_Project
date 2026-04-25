@@ -1,6 +1,6 @@
-# Minicrypt Clique Web Explorer: Comprehensive Implementation Details
+﻿# Comprehensive Implementation Details: Minicrypt & Cryptomania Web Explorer
 
-This document provides a highly structured and comprehensive overview of the **Minicrypt Clique Web Explorer** project. It outlines the architectural design, cryptographic implementations (enforcing the strict "No-Library Rule"), API layer, mathematical validations, and the interactive frontend.
+This document provides a highly structured and comprehensive overview of the **POIS_Project**, encompassing the **Minicrypt Clique**, **Public-Key Cryptomania**, and **Multi-Party Computation (MPC)** implementations. It outlines the architectural design, cryptographic primitives (enforcing the strict "No-Library Rule"), API layer, mathematical validations, and the interactive frontend.
 
 ---
 
@@ -9,87 +9,90 @@ This document provides a highly structured and comprehensive overview of the **M
 The project is structured into a decoupled system using a Python-based core cryptographic engine served via a modern REST API (FastAPI), which is consumed by an interactive React.js frontend.
 
 ### 1.1 Directory Structure
-```text
+`	ext
 POIS_Project/
-â”œâ”€â”€ backend/
-â”‚   â”œâ”€â”€ app/
-â”‚   â”‚   â”œâ”€â”€ main.py                # FastAPI Application & API Routing Logic
-â”‚   â”‚   â”œâ”€â”€ core/
-â”‚   â”‚   â”‚   â”œâ”€â”€ minicrypt.py       # Core Cryptographic Primitives (No-Library)
-â”‚   â”‚   â”‚   â””â”€â”€ routing.py         # Graph Theory Logic (BFS Cryptanalysis Map)
-â”‚   â”œâ”€â”€ scripts/
-â”‚   â”‚   â””â”€â”€ demos.py               # Cryptanalytic Games, Demos & NIST validations
-â”‚   â””â”€â”€ requirements.txt           # Backend dependencies (fastapi, uvicorn)
-â”œâ”€â”€ frontend/
-â”‚   â””â”€â”€ index.html                 # React Frontend (Babel/Tailwind via CDN)
-â””â”€â”€ README.md                      # Quickstart guide
-```
+├── backend/
+│   ├── app/
+│   │   ├── main.py                # FastAPI Application & API Routing Logic
+│   │   ├── core/
+│   │   │   ├── minicrypt.py       # Core Cryptographic Primitives (Symmetric, Hashing)
+│   │   │   ├── math_core.py       # Mathematical Foundations (Primes, CRT, Modular Math)
+│   │   │   ├── cryptomania.py     # Public-Key Cryptography (RSA, ElGamal, Signatures)
+│   │   │   ├── mpc.py             # Multi-Party Computation (OT, Yao's Gates, DAG Eval)
+│   │   │   └── routing.py         # Graph Theory Logic (BFS Cryptanalysis Map)
+│   ├── scripts/
+│   │   └── demos.py               # Cryptanalytic Games, Demos & Validations
+│   └── requirements.txt           # Backend dependencies (fastapi, uvicorn)
+├── frontend/
+│   └── index.html                 # React Frontend (Babel/Tailwind via CDN)
+├── IMPLEMENTATION_DETAILS.md      # This implementation document
+└── README.md                      # Quickstart guide
+`
 
 ---
 
-## 2. Core Cryptographic Engine (`backend/app/core/minicrypt.py`)
+## 2. Core Cryptographic Engine (ackend/app/core/)
 
-Adhering strictly to the **No-Library Rule**, all primitives are implemented from scratch using Python's large integer arithmetic (`int`) and operating system entropy (`os.urandom`). 
+Adhering strictly to the **No-Library Rule**, all primitives are implemented from scratch using Python's large integer arithmetic (int) and operating system entropy (os.urandom). 
 
-### 2.1 Pure Mathematical Foundations
-*   **Discrete Logarithm Problem (DLP_OWF):** Implementations of $f(x) = g^x \pmod p$. Used as the baseline for One-Way Functions (OWFs).
-*   **Length-Extension Resilient Merkle-DamgÃ¥rd:** Custom padding schemes and iterative compression structures based off small block states.
-*   **Pseudo-Random Generators (PRG):** A custom structured stream generator leveraging Blum-Micali/HILL-like iterations over DLP and Hard-Core Predicates.
+### 2.1 Mathematical Foundations (math_core.py)
+*   **Fast Modular Exponentiation:** Square-and-multiply, avoiding Python's pow(base, exp, mod).
+*   **Prime Generation (PA #13):** Safe prime selection using the **Miller-Rabin Primality Test**.
+*   **Extended Euclidean Algorithm (PA #14):** egcd for calculating modular inverses.
+*   **Chinese Remainder Theorem (CRT) (PA #14):** Mathematical solvers used heavily in Broadcast Attacks.
+*   **Integer N-th Root (PA #14):** Newton's Method solver mapped natively for RSA payload recovery.
 
-### 2.2 Implemented Primitive List (Programming Assignments #1 - #10)
-1.  **PA #1 (OWF $\leftrightarrow$ PRG):** Proves reductions between One-Way Functions and Pseudo-Random Generators.
-2.  **PA #2 (PRG $\rightarrow$ PRF):** Implements the Goldreich-Goldwasser-Micali (GGM) binary tree construction mapping a PRG to a Pseudo-Random Function.
-3.  **PA #3 (PRF $\rightarrow$ CPA):** Standard randomized symmetric encryption utilizing $F_k(r) \oplus m$.
-4.  **PA #4 (Block Cipher Modes):** Scratch implementations of CBC, CFB, OFB, and CTR using the base PRF.
-5.  **PA #5 (PRF $\leftrightarrow$ MAC):** Custom CBC-MAC implementations with secure compare functions avoiding timing attacks.
-6.  **PA #6 (CPA + MAC $\rightarrow$ CCA):** Encrypt-then-MAC pattern achieving Chosen-Ciphertext Security.
-7.  **PA #7 (Fixed Compression $\rightarrow$ Hash):** Classical Merkle-DamgÃ¥rd domain extension.
-8.  **PA #8 (DLP $\rightarrow$ CRHF):** A Collision-Resistant Hash Function built via $H(x_1, x_2) = g^{x_1} h^{x_2} \pmod p$.
-9.  **PA #9 (Hash Analysis):** Validation tooling for expected threshold limits on CRHFs.
-10. **PA #10 (CRHF $\rightarrow$ HMAC):** Scratch implementation of `hash( (K \oplus opad) || hash( (K \oplus ipad) || M ) )`.
+### 2.2 Core Cryptographic Constructions (minicrypt.py)
+1.  **PA #1 (OWF <-> PRG) [✓ Bidirectional]:** 
+    *   *Forward:* Custom HILL_PRG structured from DLP_OWF and the Goldreich-Levin Hard-Core Bit.
+    *   *Backward:* PRG_to_OWF constructs an explicit mapping.
+2.  **PA #2 (PRG <-> PRF) [✓ Bidirectional]:**
+    *   *Forward:* GGM_PRF implementing the Goldreich-Goldwasser-Micali binary tree.
+    *   *Backward:* PRF_to_PRG natively mapping backwards.
+3.  **PA #3 (PRF -> CPA):** Standard randomized symmetric encryption.
+4.  **PA #4 (Block Cipher Modes):** Scratch implementations of CBC, OFB, and CTR using the base PRF.
+5.  **PA #5 (PRF -> MAC):** Custom CBC-MAC implementations with secure compare functions avoiding timing attacks.
+6.  **PA #6 (CPA + MAC -> CCA):** Encrypt-then-MAC pattern achieving Chosen-Ciphertext Security.
+
+### 2.3 Hashing & Collision Resistance (minicrypt.py)
+7.  **PA #7 (Fixed Compression -> Hash):** Classical Merkle-Damgård domain extension logic.
+8.  **PA #8 (DLP -> CRHF):** A Collision-Resistant Hash Function.
+9.  **PA #9 (Hash Analysis/Birthday Attack):** Validation tooling (Floyd's Cycle-Finding Algorithm & Naive Search).
+10. **PA #10 (CRHF <-> HMAC) [✓ Bidirectional]:** 
+    *   *Forward:* Scratch building HMAC inside EncryptThenHMAC.
+    *   *Backward:* MAC_to_CRHF mapping the MAC state to an active CRHF compression sequence.
+
+### 2.4 Public-Key Cryptography (cryptomania.py)
+11. **PA #11 (Diffie-Hellman):** Ephemeral Key Exchange parameters building subgroup g. 
+12. **PA #12 (Textbook RSA + PKCS#1 v1.5):** Native N = p * q mapping utilizing OS random paddings.
+13. **PA #13 (Miller-Rabin Primality):** Integrated into math_core.py.
+14. **PA #14 (CRT + Håstad Broadcast Attack):** Native application of crt() and integer roots.
+15. **PA #15 (Digital Signatures):** Hash-then-Sign framework incorporating the fundamental dlp_hash.
+16. **PA #16 (ElGamal PKC):** Public-Key variant of DH ensuring probabilistic asymmetric encryption.
+17. **PA #17 (CCA-Secure PKC):** Custom Encrypt-then-Sign combination (ElGamal Encryption + RSA Signatures).
+
+### 2.5 Multi-Party Computation / Protocols (mpc.py)
+18. **PA #18 (Oblivious Transfer):** 1-out-of-2 OT built directly on RSA. 
+19. **PA #19 (Secure AND / Gates):** Isolated simulated secure logic operations directly mapping OT exchanges.
+20. **PA #20 (All 2-party MPC):** Advanced topological logic evaluator converting arbitrary circuit DAGs into sequential secure gates.
 
 ---
 
-## 3. Cryptanalytic Verification & Games (`backend/scripts/demos.py`)
-
-A standalone execution script designed to mathematically prove the theoretical boundaries of the implemented primitives.
-
+## 3. Cryptanalytic Verification & Games (scripts/demos.py)
 ### 3.1 Indistinguishability Games (Security Proofs)
-*   **PRF Distinguishing Game:** Simulates an adversary querying either a true Random Oracle or the GGM PRF.
-*   **IND-CPA Game:** Proves that an adversary cannot guess which of two chosen messages were encrypted.
-*   **EUF-CMA Game:** Demonstrates existential unforgeability under chosen-message attacks on the custom CBC-MAC.
+*   **PRF Distinguishing Game**, **IND-CPA Game**, **EUF-CMA Game**
 
 ### 3.2 Collision & Statistical Valuations
-*   **NIST Frequency & Runs Tests:** Statistical randomness checks applied to the scratch-built PRG.
-*   **PA #8 5-Message Test:** Hashes 5 specifically sized strings to mathematically confirm distinct outputs and the resilience of MD padding against native collisions.
-*   **PA #9 Birthday Attack Simulations (Naive vs. Floyd):**
-    *   **Naive Dictionary Attack:** $O(N)$ Space complexity. Stores every hash until a collision occurs.
-    *   **Floyd's Cycle-Finding Algorithm (Tortoise and Hare):** $O(1)$ Space complexity. Validates evaluations matching theoretical limits ~ $1.25 \times \sqrt{2^N}$.
+*   **NIST Frequency & Runs Tests**
+*   **PA #8 5-Message Test**
+*   **PA #9 Birthday Attack Simulations (Naive vs. Floyd)**
 
 ---
 
-## 4. API Layer (`backend/app/main.py`)
-
-A **FastAPI** structure wrapping the core Python cryptography modules to expose them as a REST interface.
-
-### Endpoints
-*   `POST /api/graph/reduce`: Takes taking a Source and Target primitive via Breadth-First-Search (BFS) inside `routing.py` and returns the stringified mathematical proofs reducing them.
-*   `POST /api/owf/evaluate`: Executes the DLP One-Way Function live.
-*   `POST /api/prg/next_bits`: Computes deterministic pseudo-random bitstreams.
-*   `POST /api/cpa/encrypt` / `decrypt`: Encrypts/Decrypts payloads dynamically.
-*   `POST /api/hash/dlp`: Runs the custom CRHF mapping.
-*   `GET /api/graph/schema`: Returns the total interconnected network array of all 10 PA primitives and their edge conditions.
+## 4. API & Orchestration Layer (ackend/app/main.py & outing.py)
+A **FastAPI** structure wrapping the core Python cryptography modules to expose them as a REST interface. The BFS architecture proves reductions natively.
 
 ---
 
-## 5. View Controller / React Frontend (`frontend/index.html`)
-
+## 5. View Controller / React Frontend (rontend/index.html)
 To strictly fulfill structural capabilities while avoiding specific node package managers natively, the frontend is deployed as a massive single-page application utilizing **React via Unpkg CDNs** and **Babel Standalone**.
-
-### 5.1 Interactive Two-Column UI (PA #0 Rule)
-*   **Column 1 (Build Panel):** Selects the **Source Primitive** and injects an initial Hex Key / Seed.
-*   **Column 2 (Reduce Panel):** Selects the **Target Primitive** to map the reduction proof boundary. It dynamically renders the BFS algorithmic shortest path mapped between the elements.
-*   **Bidirectional Swap Button:** Rotates columns mathematically bridging PA Inverse equivalences (e.g. PRG $\rightarrow$ OWF).
-
-### 5.2 Live Data Flow Sandbox
-Within Column 2, users can inject raw strings or hex payloads into the selected target. "Execute Live" natively triggers the FastAPI router crossing boundaries back into the `minicrypt.py` engine, proving execution states without ever dropping down into the terminal.
