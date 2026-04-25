@@ -90,3 +90,11 @@ Simply open the file directly in any modern browser context natively without any
 3. Navigate to and open `frontend/index.html`.
 
 You can now interact with the logical nodes, swap primitives for bidirectional mathematical proofs, and execute real encryption queries against the backend via the "Live Data Component."
+## Running Complete Phase Evaluations (Demos)
+All logic from PA #1 through PA #20 can be validated natively bypassing the frontend by explicitly invoking:
+
+```sh
+cd backend
+python scripts/demos.py
+``` 
+
