@@ -69,6 +69,19 @@ class CCADecryptRequest(BaseModel):
 class HashRequest(BaseModel):
     message_hex: str
     out_len: int = 32
+    return_trace: bool = False
+
+class HashTraceRequest(BaseModel):
+    message_hex: str
+    block_size: int = 8
+
+class BirthdayRequest(BaseModel):
+    n_bits: int
+
+class LengthExtRequest(BaseModel):
+    message_hex: str
+    append_hex: str
+    hash_type: str = "toy"
 
 class MACRequest(BaseModel):
     key_hex: str
@@ -354,12 +367,52 @@ def cca_decrypt(req: CCADecryptRequest):
     except Exception as e:
         raise HTTPException(400, str(e))
 
+# ── PA#7: Merkle-Damgård Trace ─────────────────────────────────────
+@app.post("/api/hash/md_trace")
+def hash_md_trace(req: HashTraceRequest):
+    try:
+        from app.core.minicrypt import MerkleDamgard, ToyXOR_Compress
+        md = MerkleDamgard(ToyXOR_Compress.compress, b'\x00'*4, req.block_size)
+        trace = md.hash(bytes.fromhex(req.message_hex), return_trace=True)
+        return trace
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
 # ── PA#8: DLP Hash ─────────────────────────────────────────────────
 @app.post("/api/hash/dlp")
 def hash_message(req: HashRequest):
     try:
+        if req.return_trace:
+            return dlp_hash(bytes.fromhex(req.message_hex), req.out_len, return_trace=True)
         digest = dlp_hash(bytes.fromhex(req.message_hex), req.out_len)
         return {"digest_hex": digest.hex()}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#9: Birthday Attack ──────────────────────────────────────────
+@app.post("/api/hash/birthday")
+def hash_birthday(req: BirthdayRequest):
+    try:
+        from app.core.minicrypt import CollisionFinder, dlp_hash
+        n = min(req.n_bits, 20)  # Cap for sanity, 20 bits is ~1024 ops
+        
+        def trunc_hash(m: bytes) -> bytes:
+            h = dlp_hash(m, out_len=(n+7)//8)
+            # Mask bits if n is not a multiple of 8
+            val = int.from_bytes(h, 'big')
+            val = val & ((1 << n) - 1)
+            return val.to_bytes((n+7)//8, 'big')
+            
+        res = CollisionFinder.naive_search(trunc_hash, n)
+        if res:
+            return {
+                "evaluations": res["evaluations"],
+                "msg1_hex": res["msg1"].hex(),
+                "msg2_hex": res["msg2"].hex(),
+                "hash_hex": res["hash"].hex(),
+                "n_bits": n
+            }
+        return {"error": "No collision found within limit", "n_bits": n}
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -370,6 +423,43 @@ def hmac_compute(req: HMACRequest):
         hmac = HMAC_Implementation()
         tag = hmac.evaluate(bytes.fromhex(req.key_hex), bytes.fromhex(req.message_hex))
         return {"tag_hex": tag.hex()}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/hmac/length_extension_demo")
+def hmac_length_extension(req: LengthExtRequest):
+    try:
+        from app.core.minicrypt import HMAC_Implementation, dlp_hash
+        key = b'secret_key_12345'
+        m = bytes.fromhex(req.message_hex)
+        append = bytes.fromhex(req.append_hex)
+        
+        if req.hash_type == 'sha256':
+            import hashlib, hmac as pyhmac
+            naive_mac_val = hashlib.sha256(key + m).digest()
+            naive_mac_ext = hashlib.sha256(key + m + append).digest()
+            hmac_val = pyhmac.new(key, m, hashlib.sha256).digest()
+            hmac_ext = pyhmac.new(key, m + append, hashlib.sha256).digest()
+        else:
+            naive_mac_val = dlp_hash(key + m)
+            naive_mac_ext = dlp_hash(key + m + append)
+            
+            hmac = HMAC_Implementation()
+            hmac_val = hmac.evaluate(key, m)
+            hmac_ext = hmac.evaluate(key, m + append)
+        
+        return {
+            "naive": {
+                "tag_hex": naive_mac_val.hex(),
+                "extended_tag_hex": naive_mac_ext.hex(),
+                "message": "Vulnerable: Given MAC(m), attacker can compute MAC(m||pad||m') locally without k."
+            },
+            "hmac": {
+                "tag_hex": hmac_val.hex(),
+                "extended_tag_hex": hmac_ext.hex(),
+                "message": "Secure: Outer hash keyed with k prevents length extension."
+            }
+        }
     except Exception as e:
         raise HTTPException(400, str(e))
 

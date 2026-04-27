@@ -379,7 +379,7 @@ class MerkleDamgard:
         self.IV = IV
         self.block_size = block_size
 
-    def hash(self, message: bytes) -> bytes:
+    def hash(self, message: bytes, return_trace: bool = False) -> bytes | dict:
         mlen = len(message) * 8
         m_padded = bytearray(message)
         m_padded.append(0x80)
@@ -391,11 +391,31 @@ class MerkleDamgard:
         m_padded = bytes(m_padded)
         
         cv = self.IV
+        trace = {"iv": cv.hex(), "blocks": [], "padded_message": m_padded.hex()}
         for i in range(0, len(m_padded), self.block_size):
             block = m_padded[i:i+self.block_size]
-            cv = self.compress(cv, block)
+            next_cv = self.compress(cv, block)
+            trace["blocks"].append({
+                "index": i // self.block_size,
+                "cv_in": cv.hex(),
+                "block": block.hex(),
+                "cv_out": next_cv.hex()
+            })
+            cv = next_cv
             
+        if return_trace:
+            trace["digest_hex"] = cv.hex()
+            return trace
         return cv
+
+class ToyXOR_Compress:
+    """A fast toy compression function for UI tracing: h(cv, block) = (cv ^ block[:4]) || (cv ^ block[4:])"""
+    @staticmethod
+    def compress(cv: bytes, block: bytes) -> bytes:
+        cv_int = int.from_bytes(cv, 'big')
+        b1 = int.from_bytes(block[:4], 'big')
+        b2 = int.from_bytes(block[4:], 'big')
+        return ((cv_int ^ b1) ^ b2).to_bytes(4, 'big')
 
 # ==============================================================================
 # PA #8: DLP-Based CRHF
@@ -420,10 +440,13 @@ class DLP_CRHF:
         # Return 256 bytes (2048 bits)
         return res.to_bytes(256, 'big')
 
-def dlp_hash(message: bytes, out_len: int = 32) -> bytes:
+def dlp_hash(message: bytes, out_len: int = 32, return_trace: bool = False) -> bytes | dict:
     IV = b'\x00' * 256
     md = MerkleDamgard(DLP_CRHF.compress, IV, 256)
-    res = md.hash(message)
+    res = md.hash(message, return_trace=return_trace)
+    if return_trace:
+        res["digest_hex"] = bytes.fromhex(res["digest_hex"])[:out_len].hex()
+        return res
     return res[:out_len]
 
 # ==============================================================================
@@ -433,12 +456,14 @@ def dlp_hash(message: bytes, out_len: int = 32) -> bytes:
 class CollisionFinder:
     @staticmethod
     def naive_search(hash_fn: Callable[[bytes], bytes], n_bits: int):
+        import os
         seen = {}
-        for count in range(1 << n_bits):
-            msg = count.to_bytes(8, 'big')
+        # Expected max evaluations is roughly 2^(n_bits/2) * 5
+        for count in range(1, (1 << n_bits) + 1):
+            msg = os.urandom(8)
             h = hash_fn(msg)
-            if h in seen:
-                return count, seen[h], msg, h
+            if h in seen and seen[h] != msg:
+                return {"evaluations": count, "msg1": seen[h], "msg2": msg, "hash": h}
             seen[h] = msg
         return None
 

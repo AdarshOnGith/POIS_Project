@@ -7,11 +7,15 @@ import PA3_CPA from './components/PA3_CPA'
 import PA4_Modes from './components/PA4_Modes'
 import PA5_MAC from './components/PA5_MAC'
 import PA6_CCA from './components/PA6_CCA'
+import PA7_MD from './components/PA7_MD'
+import PA8_DLP from './components/PA8_DLP'
+import PA9_Birthday from './components/PA9_Birthday'
+import PA10_HMAC from './components/PA10_HMAC'
 
 const API = 'http://localhost:8000/api'
 const post = async (p,b) => { const r = await fetch(`${API}/${p}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); return r.json() }
 
-// Generic API demo for PA#7+
+// Generic API demo for PA#11+
 function ApiDemo({ title, subtitle, fields, endpoint, buildBody }) {
   const [vals, setVals] = useState(Object.fromEntries(fields.map(f => [f.key, f.default || ''])))
   const [out, setOut] = useState(null)
@@ -60,18 +64,10 @@ function getPanel(id) {
     case 'pa4': return <PA4_Modes />
     case 'pa5': return <PA5_MAC />
     case 'pa6': return <PA6_CCA />
-    case 'pa7': return <ApiDemo title="🧱 PA#7: Merkle-Damgård Hash" subtitle="Fixed-length compression → variable-length hash via iterative chaining with MD padding."
-      fields={[{key:'msg',label:'Message (Hex)',default:'48656c6c6f20576f726c64',mono:true},{key:'len',label:'Out Len',default:'32',type:'number',width:'80px'}]}
-      endpoint="hash/dlp" buildBody={v=>({message_hex:v.msg,out_len:parseInt(v.len)})} />
-    case 'pa8': return <ApiDemo title="🔗 PA#8: DLP-Based CRHF" subtitle="Pedersen-style: H(x,y) = g^x · h^y mod p, extended via Merkle-Damgård."
-      fields={[{key:'msg',label:'Message (Hex)',default:'48656c6c6f',mono:true},{key:'len',label:'Out Len',default:'32',type:'number',width:'80px'}]}
-      endpoint="hash/dlp" buildBody={v=>({message_hex:v.msg,out_len:parseInt(v.len)})} />
-    case 'pa9': return <ApiDemo title="🎂 PA#9: Birthday Attack" subtitle="Collision finding via birthday paradox."
-      fields={[{key:'msg',label:'Message (Hex)',default:'48656c6c6f',mono:true},{key:'len',label:'Hash Len',default:'4',type:'number',width:'80px'}]}
-      endpoint="hash/dlp" buildBody={v=>({message_hex:v.msg,out_len:parseInt(v.len)})} />
-    case 'pa10': return <ApiDemo title="🔐 PA#10: HMAC" subtitle="HMAC(k,m) = H((k⊕opad) || H((k⊕ipad) || m))."
-      fields={[{key:'key',label:'Key (Hex)',default:'00112233445566778899aabbccddeeff',mono:true},{key:'msg',label:'Message (Hex)',default:'48656c6c6f',mono:true}]}
-      endpoint="hmac/compute" buildBody={v=>({key_hex:v.key,message_hex:v.msg})} />
+    case 'pa7': return <PA7_MD />
+    case 'pa8': return <PA8_DLP />
+    case 'pa9': return <PA9_Birthday />
+    case 'pa10': return <PA10_HMAC />
     case 'pa11': return <ApiDemo title="🤝 PA#11: Diffie-Hellman" subtitle="DH key exchange with safe prime group."
       fields={[]} endpoint="dh/exchange" buildBody={()=>({})} />
     case 'pa12': return <ApiDemo title="🔑 PA#12: RSA" subtitle="Textbook RSA + PKCS#1 v1.5 padding."

@@ -263,3 +263,16 @@ Here are some toy parameters you can copy and paste into the interactive web exp
 
 ### PA#6: CCA Encryption (Malleability)
 *   **Message**: `48656c6c6f20576f726c642121212121`
+
+### PA#7: Merkle-Damgård Hash
+*   **Message (Text)**: `Hello World! This is a long message to test blocks.`
+
+### PA#8: DLP-Based CRHF
+*   **Message**: `48656c6c6f`
+
+### PA#9: Birthday Attack
+*   *Use the slider in the UI to test different bit lengths. No input required.*
+
+### PA#10: HMAC vs Naive MAC
+*   **Original Message m**: `48656c6c6f`
+*   **Attacker Append m'**: `41747461636b`
