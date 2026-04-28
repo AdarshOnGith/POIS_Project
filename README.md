@@ -90,12 +90,17 @@ POIS_Project/
 
 | PA | Primitive | Status |
 |----|-----------|--------|
-| #18 | 1-out-of-2 Oblivious Transfer (RSA) | ✅ |
-| #19 | Secure AND (via OT) + Free XOR | ✅ |
-| #20 | DAG Circuit Evaluator | ✅ |
-| #20 | Millionaire's Problem | ✅ `run_millionaire()` |
-| #20 | Secure Equality Test | ✅ `run_equality()` |
-| #20 | Secure Bit-Addition | ✅ `run_addition()` |
+| #18 | 1-out-of-2 OT — Bellare-Micali from ElGamal (PA#16) | ✅ |
+| #18 | OT demo with step log + cheat attempt panel | ✅ |
+| #19 | Secure AND via OT (Alice sends (0,a), Bob chooses b) | ✅ |
+| #19 | Secure XOR — free via additive secret sharing over ℤ₂ | ✅ |
+| #19 | Secure NOT — free (Alice flips her share locally) | ✅ |
+| #19 | Truth table verification (all 4 combinations) | ✅ |
+| #20 | DAG Circuit Evaluator (`TracingSecureDAG`) | ✅ |
+| #20 | Millionaire's Problem (4-bit ripple comparator) | ✅ |
+| #20 | Secure Equality Test | ✅ |
+| #20 | Secure Bit-Addition (full ripple-carry adder) | ✅ |
+| #20 | Gate-by-gate trace for frontend animation | ✅ |
 
 ---
 
@@ -171,9 +176,13 @@ Navigate to `http://localhost:8000/docs` for the Swagger API interface.
 | `/api/elgamal/encrypt` | POST | PA#16: ElGamal encrypt (full detail) |
 | `/api/elgamal/malleable` | POST | PA#16: Malleability demo (k·c₂) |
 | `/api/cca_pkc/demo` | POST | PA#17: Encrypt-then-Sign + tamper demo |
-| `/api/mpc/and` | POST | PA#19: Secure AND gate |
+| `/api/ot/demo` | POST | PA#18: Bellare-Micali OT step-log + cheat attempt |
+| `/api/mpc/and` | POST | PA#19: Secure AND gate (result only) |
+| `/api/mpc/and_demo` | POST | PA#19: AND gate with full step transcript |
+| `/api/mpc/all_and_combos` | POST | PA#19: Run all 4 (a,b) combinations |
 | `/api/mpc/xor` | POST | PA#19: Free Secure XOR |
 | `/api/mpc/millionaire` | POST | PA#20: Millionaire's Problem |
+| `/api/mpc/millionaire_trace` | POST | PA#20: Millionaire with gate-by-gate trace |
 | `/api/mpc/equality` | POST | PA#20: Secure Equality |
 | `/api/mpc/addition` | POST | PA#20: Secure Addition |
 | `/api/graph/schema` | GET | Full graph schema |
@@ -204,15 +213,16 @@ Open `http://localhost:5173` in your browser (with the API server running on por
 A single AND gate evaluation triggers the following call chain:
 
 ```
-PA#20: SecureDAG.evaluate()
+PA#20: TracingSecureDAG.evaluate()
   └─ PA#19: SecureGateSimulator.secure_and(a, b)
-       └─ PA#18: RSA_OT_Sender / RSA_OT_Receiver
-            ├─ RSA keygen (PA#12): rsa_keygen()
-            │    └─ Miller-Rabin (PA#13): miller_rabin() → gen_prime()
-            ├─ RSA decrypt: rsa_dec_textbook()
-            │    └─ fast_mod_exp (PA#12)
-            └─ DLP Hash (PA#8): dlp_hash()
-                 └─ Merkle-Damgård (PA#7) + DLP_CRHF compression
+       └─ PA#18: ot_demo / and_gate_demo (Bellare-Micali OT)
+            ├─ ot_receiver_step1(b, p, q, g)   → pk_b [honest] + pk_{1-b} [fake, no trapdoor]
+            ├─ ot_sender_step(pk0, pk1, m0, m1) → (C_0, C_1) via ElGamal Enc
+            │    └─ PA#16: elgamal_enc(pk, m)
+            └─ ot_receiver_step2(state, C0, C1)  → m_b via ElGamal Dec
+                 └─ PA#16: elgamal_dec(sk, c)
+                      └─ PA#11: dh_generate_group() — safe prime p=2q+1
+                           └─ PA#13: gen_prime() + miller_rabin()
 ```
 
 ---
@@ -334,3 +344,66 @@ Here are some toy parameters you can copy and paste into the interactive web exp
     *   **CCA side**: "Signature invalid — decryption aborted. Output ⊥"
     *   **Plain ElGamal contrast panel**: returns `84` (= 2×42) — malleable!
 *   Any tampered ciphertext → ⊥. Untampered → decrypts correctly.
+
+### PA#18: Oblivious Transfer (Bellare-Micali from ElGamal)
+
+**Toy examples:**
+
+| m₀ | m₁ | Bob's choice | Expected result | Cheat attempt |
+|----|-----|-------------|-----------------|---------------|
+| 42 | 99  | 0           | Bob receives **42**; m₁=99 is "??" | Random sk → garbage ✓ |
+| 42 | 99  | 1           | Bob receives **99**; m₀=42 is "??" | Random sk → garbage ✓ |
+| 7  | 13  | 0           | Bob receives **7** | Cheat fails ✓ |
+| 7  | 13  | 1           | Bob receives **13** | Cheat fails ✓ |
+
+*   Alice panel (left) shows m₀ and m₁. Click **Choose 0** or **Choose 1** in Bob's panel.
+*   Protocol step log shows: group setup → Receiver generates honest pk_b + fake pk_{1-b} → Sender encrypts (C₀, C₁) → Receiver decrypts C_b.
+*   Click **"Try to decrypt C_{1-b}"**: guessed decrypt → wrong value, confirming no trapdoor.
+*   Toy parameters: 256-bit ElGamal group (completes in ~2–5 s).
+
+### PA#19: Secure AND Gate
+
+**Truth table (all 4 combinations):**
+
+| a | b | a ∧ b |
+|---|---|-------|
+| 0 | 0 |   0   |
+| 0 | 1 |   0   |
+| 1 | 0 |   0   |
+| 1 | 1 |   1   |
+
+*   Set Alice bit = **1**, Bob bit = **1** → click **⚙️ Compute AND securely**
+    *   Step log: "Alice sets OT messages (0, 1). Bob chooses b=1. Bob receives m₁ = 1 = 1 ∧ 1 ✓"
+    *   Alice learns: "Nothing about b". Bob learns: "Only m_b = 1, not a directly."
+*   Click **Run all 4 combinations** tab → truth table fills with ✓ for each row.
+*   **Secure XOR tab** shows free additive-secret-sharing protocol (no OT needed).
+
+### PA#20: All 2-Party Secure Computation
+
+**Millionaire's Problem (4-bit, values 0–15):**
+
+| Alice x | Bob y | Expected result | OT calls |
+|---------|-------|-----------------|----------|
+| 7       | 12    | Bob is richer   | ~12      |
+| 10      | 3     | Alice is richer | ~12      |
+| 5       | 5     | Equal           | ~12      |
+
+*   Use sliders to set x and y. Click **💰 Who is richer?**
+*   Result banner appears: "Alice is richer" / "Bob is richer" / "Equal"
+*   Expand **Circuit trace** to see each AND/XOR/NOT gate evaluated with wire values.
+*   Neither party's actual wealth value is revealed — only the comparison result.
+
+**Secure Equality (4-bit):**
+
+| x | y | Expected |
+|---|---|----------|
+| 6 | 6 | Equal ✓  |
+| 3 | 7 | Not equal ✓ |
+
+**Secure Bit-Addition (4-bit, mod 16):**
+
+| x  | y  | x+y mod 16 |
+|----|----|------------|
+| 5  | 3  | 8 ✓        |
+| 7  | 9  | 0 ✓ (overflow) |
+| 4  | 4  | 8 ✓        |

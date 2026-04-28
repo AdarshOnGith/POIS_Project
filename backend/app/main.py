@@ -26,7 +26,8 @@ from app.core.cryptomania import (
 )
 from app.core.mpc import (
     SecureGateSimulator, SecureDAG,
-    run_millionaire, run_equality, run_addition
+    run_millionaire, run_equality, run_addition,
+    ot_demo, and_gate_demo, run_all_and_combos, run_millionaire_trace,
 )
 
 app = FastAPI(title="Minicrypt Clique Web Explorer API")
@@ -164,6 +165,17 @@ class MPCRequest(BaseModel):
 class GateRequest(BaseModel):
     a: int
     b: int
+
+class OTDemoRequest(BaseModel):
+    m0: int = 42
+    m1: int = 99
+    choice: int = 0
+    bits: int = 256
+
+class AndDemoRequest(BaseModel):
+    a: int = 1
+    b: int = 1
+    bits: int = 256
 
 class DHFullRequest(BaseModel):
     alice_private: Optional[int] = None
@@ -626,6 +638,37 @@ def equality(req: MPCRequest):
 def addition(req: MPCRequest):
     try:
         return run_addition(req.x, req.y, req.n_bits)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#18: OT Demo ────────────────────────────────────────────────
+@app.post("/api/ot/demo")
+def ot_demo_endpoint(req: OTDemoRequest):
+    try:
+        return ot_demo(req.m0, req.m1, req.choice, req.bits)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#19: AND Gate Step Demo ────────────────────────────────────
+@app.post("/api/mpc/and_demo")
+def and_demo_endpoint(req: AndDemoRequest):
+    try:
+        return and_gate_demo(req.a, req.b, req.bits)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/mpc/all_and_combos")
+def all_and_combos_endpoint():
+    try:
+        return run_all_and_combos(bits=256)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#20: Millionaire with gate trace ───────────────────────────
+@app.post("/api/mpc/millionaire_trace")
+def millionaire_trace_endpoint(req: MPCRequest):
+    try:
+        return run_millionaire_trace(req.x, req.y, req.n_bits)
     except Exception as e:
         raise HTTPException(400, str(e))
 

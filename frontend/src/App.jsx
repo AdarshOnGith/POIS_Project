@@ -18,6 +18,9 @@ import PA14_CRT from './components/PA14_CRT'
 import PA15_Signatures from './components/PA15_Signatures'
 import PA16_ElGamal from './components/PA16_ElGamal'
 import PA17_CCAPKC from './components/PA17_CCAPKC'
+import PA18_OT from './components/PA18_OT'
+import PA19_SecureAND from './components/PA19_SecureAND'
+import PA20_MPC from './components/PA20_MPC'
 
 const API = 'http://localhost:8000/api'
 const post = async (p,b) => { const r = await fetch(`${API}/${p}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); return r.json() }
@@ -82,15 +85,9 @@ function getPanel(id) {
     case 'pa15': return <PA15_Signatures />
     case 'pa16': return <PA16_ElGamal />
     case 'pa17': return <PA17_CCAPKC />
-    case 'pa18': return <ApiDemo title="🔒 PA#18: Oblivious Transfer" subtitle="1-out-of-2 OT via RSA."
-      fields={[{key:'a',label:'Alice bit',default:'1',type:'number',width:'80px'},{key:'b',label:'Bob bit',default:'0',type:'number',width:'80px'}]}
-      endpoint="mpc/and" buildBody={v=>({a:parseInt(v.a),b:parseInt(v.b)})} />
-    case 'pa19': return <ApiDemo title="⚡ PA#19: Secure Gates" subtitle="AND via OT, XOR via secret sharing."
-      fields={[{key:'a',label:'a',default:'1',type:'number',width:'80px'},{key:'b',label:'b',default:'0',type:'number',width:'80px'}]}
-      endpoint="mpc/and" buildBody={v=>({a:parseInt(v.a),b:parseInt(v.b)})} />
-    case 'pa20': return <ApiDemo title="🔒 PA#20: 2-Party MPC" subtitle="Millionaire, Equality, Addition circuits."
-      fields={[{key:'x',label:'x',default:'7',type:'number',width:'80px'},{key:'y',label:'y',default:'3',type:'number',width:'80px'},{key:'bits',label:'bits',default:'4',type:'number',width:'80px'}]}
-      endpoint="mpc/millionaire" buildBody={v=>({x:parseInt(v.x),y:parseInt(v.y),n_bits:parseInt(v.bits)})} />
+    case 'pa18': return <PA18_OT />
+    case 'pa19': return <PA19_SecureAND />
+    case 'pa20': return <PA20_MPC />
     default: return <PA0_CliqueExplorer />
   }
 }

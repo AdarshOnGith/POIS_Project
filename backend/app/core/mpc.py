@@ -5,7 +5,7 @@ PA #18 - PA #20: Oblivious Transfer, Yao's Garbled Circuits / Secure Gates, and 
 from typing import Tuple, List, Callable
 import os
 from .math_core import fast_mod_exp, mod_inverse
-from .cryptomania import rsa_keygen, rsa_dec_textbook
+from .cryptomania import rsa_keygen, rsa_dec_textbook, dh_generate_group, elgamal_keygen, elgamal_enc, elgamal_dec
 from .minicrypt import dlp_hash
 
 # ==============================================================================
@@ -421,4 +421,297 @@ def run_addition(x: int, y: int, n_bits: int = 4) -> dict:
         "ot_calls": dag.ot_calls,
         "wall_clock_seconds": elapsed,
         "n_bits": n_bits
+    }
+
+
+# ==============================================================================
+# PA #18: Bellare-Micali OT using ElGamal (PA#16) — proper 3-step protocol
+# ==============================================================================
+
+def ot_receiver_step1(choice: int, p: int, q: int, g: int) -> dict:
+    """
+    PA #18 OT Receiver Step 1.
+    Generates honest key pair for chosen index, fake key (no trapdoor) for other index.
+    Returns both public keys and private state for step 2.
+    """
+    # Honest key pair for index `choice`
+    pk_honest, sk_honest = elgamal_keygen(p, q, g)
+    h_honest = pk_honest[3]
+
+    # Fake public key for index `1-choice`: random group element, private key discarded
+    q_bytes = (q.bit_length() + 7) // 8
+    r_fake = int.from_bytes(os.urandom(q_bytes), 'big') % q
+    h_fake = fast_mod_exp(g, r_fake, p)
+    pk_fake = (p, q, g, h_fake)
+    # r_fake intentionally not stored — receiver has no trapdoor for this key
+
+    if choice == 0:
+        pk0, pk1 = pk_honest, pk_fake
+    else:
+        pk0, pk1 = pk_fake, pk_honest
+
+    state = {
+        "choice": choice,
+        "sk_b": sk_honest,      # private state: only sk for chosen index
+        "p": p, "q": q, "g": g,
+    }
+    return {
+        "pk0": {"p": p, "q": q, "g": g, "h": pk0[3]},
+        "pk1": {"p": p, "q": q, "g": g, "h": pk1[3]},
+        "state": state,
+        "h_honest": h_honest,
+        "h_fake": h_fake,
+    }
+
+
+def ot_sender_step(pk0: dict, pk1: dict, m0: int, m1: int) -> dict:
+    """
+    PA #18 OT Sender Step.
+    Encrypts both messages under the two public keys. Returns both ciphertexts.
+    """
+    elg_pk0 = (pk0["p"], pk0["q"], pk0["g"], pk0["h"])
+    elg_pk1 = (pk1["p"], pk1["q"], pk1["g"], pk1["h"])
+
+    p = pk0["p"]
+    m0_val = max(1, m0 % p)
+    m1_val = max(1, m1 % p)
+
+    c0 = elgamal_enc(elg_pk0, m0_val)
+    c1 = elgamal_enc(elg_pk1, m1_val)
+
+    return {
+        "C0": {"c1": c0[0], "c2": c0[1]},
+        "C1": {"c1": c1[0], "c2": c1[1]},
+        "m0_sent": m0_val,
+        "m1_sent": m1_val,
+    }
+
+
+def ot_receiver_step2(state: dict, C0: dict, C1: dict) -> dict:
+    """
+    PA #18 OT Receiver Step 2.
+    Decrypts the chosen ciphertext using the honest sk. Cannot decrypt the other.
+    """
+    choice = state["choice"]
+    sk_b = state["sk_b"]
+
+    Cb = C0 if choice == 0 else C1
+    c_tuple = (Cb["c1"], Cb["c2"])
+    m_b = elgamal_dec(sk_b, c_tuple)
+    return {"choice": choice, "m_b": m_b}
+
+
+def ot_demo(m0: int, m1: int, choice: int, bits: int = 256) -> dict:
+    """
+    PA #18: Full Bellare-Micali OT demo with step log and cheat attempt.
+    Toy parameters: bits=256 for speed.
+    """
+    step_log = []
+
+    # Group setup
+    p, q, g = dh_generate_group(bits)
+    step_log.append(f"Group: p (prime, {p.bit_length()} bits), g={g} (generator of order q={q})")
+
+    # Step 1: Receiver sets up keys
+    r1 = ot_receiver_step1(choice, p, q, g)
+    pk0, pk1 = r1["pk0"], r1["pk1"]
+    step_log.append(
+        f"Step 1 (Receiver, choice={choice}): pk_{choice} = g^x mod p [honest, has sk]; "
+        f"pk_{1-choice} = g^r mod p [fake, r discarded — no trapdoor]"
+    )
+    step_log.append(f"  pk_0.h = {str(pk0['h'])[:40]}...")
+    step_log.append(f"  pk_1.h = {str(pk1['h'])[:40]}...")
+    step_log.append("Step 2 (Receiver→Sender): Sends (pk_0, pk_1)")
+
+    # Step 2: Sender encrypts
+    m0_val = max(1, m0 % p)
+    m1_val = max(1, m1 % p)
+    s2 = ot_sender_step(pk0, pk1, m0_val, m1_val)
+    step_log.append("Step 3 (Sender): C_0 = ElGamal.Enc(pk_0, m_0), C_1 = ElGamal.Enc(pk_1, m_1)")
+    step_log.append(f"  C_0 = ({str(s2['C0']['c1'])[:30]}..., {str(s2['C0']['c2'])[:30]}...)")
+    step_log.append(f"  C_1 = ({str(s2['C1']['c1'])[:30]}..., {str(s2['C1']['c2'])[:30]}...)")
+    step_log.append("Step 4 (Sender→Receiver): Sends (C_0, C_1)")
+
+    # Step 3: Receiver decrypts chosen message
+    s3 = ot_receiver_step2(r1["state"], s2["C0"], s2["C1"])
+    received = s3["m_b"]
+    correct_m = m0_val if choice == 0 else m1_val
+    step_log.append(f"Step 5 (Receiver): Decrypts C_{choice} using sk_{choice} → m_b = {received}")
+    step_log.append(f"  Correct: {received == correct_m}")
+
+    # Cheat attempt: try to decrypt the OTHER ciphertext without its key
+    q_bytes = (q.bit_length() + 7) // 8
+    x_guess = int.from_bytes(os.urandom(q_bytes), 'big') % q
+    sk_guess = (p, q, g, x_guess)
+    C_other = s2["C1"] if choice == 0 else s2["C0"]
+    cheat_result = elgamal_dec(sk_guess, (C_other["c1"], C_other["c2"]))
+    correct_other = m1_val if choice == 0 else m0_val
+
+    step_log.append(
+        f"Cheat attempt: Receiver guesses random sk for C_{1-choice} → {cheat_result} "
+        f"(correct={correct_other}, match={cheat_result == correct_other})"
+    )
+
+    return {
+        "choice": choice,
+        "m0": m0_val,
+        "m1": m1_val,
+        "received_m_b": received,
+        "correct": received == correct_m,
+        "step_log": step_log,
+        "pk0_h_prefix": str(pk0["h"])[:24],
+        "pk1_h_prefix": str(pk1["h"])[:24],
+        "C0_c1_prefix": str(s2["C0"]["c1"])[:24],
+        "C1_c1_prefix": str(s2["C1"]["c1"])[:24],
+        "cheat_attempt": {
+            "target_index": 1 - choice,
+            "guessed_decrypt": cheat_result,
+            "correct_value": correct_other,
+            "success": cheat_result == correct_other,
+        },
+    }
+
+
+# ==============================================================================
+# PA #19: AND Gate step-by-step demo (uses OT above)
+# ==============================================================================
+
+def and_gate_demo(alice_a: int, bob_b: int, bits: int = 256) -> dict:
+    """
+    PA #19: Secure AND via OT, with full step log.
+    Alice holds `a`, Bob holds `b`. Protocol: Alice sends OT messages (0, a), Bob chooses b.
+    Bob receives m_b = a AND b.
+    """
+    step_log = []
+    step_log.append(f"Alice holds a={alice_a}. Bob holds b={bob_b}.")
+    step_log.append(f"Alice sets up OT: m_0=0 (= a AND 0), m_1={alice_a} (= a AND 1)")
+    step_log.append(f"Bob will run OT receiver with choice bit b={bob_b}")
+
+    # Run OT
+    p, q, g = dh_generate_group(bits)
+    r1 = ot_receiver_step1(bob_b, p, q, g)
+    pk0, pk1 = r1["pk0"], r1["pk1"]
+    step_log.append(f"Bob generates pk_{bob_b} [honest] and pk_{1-bob_b} [fake, no trapdoor]")
+    step_log.append("Bob sends (pk_0, pk_1) to Alice")
+
+    m_ot_0 = 0
+    m_ot_1 = alice_a
+    s2 = ot_sender_step(pk0, pk1, m_ot_0, m_ot_1)
+    step_log.append(f"Alice encrypts: C_0 = Enc(pk_0, 0), C_1 = Enc(pk_1, {alice_a})")
+    step_log.append("Alice sends (C_0, C_1) to Bob")
+
+    s3 = ot_receiver_step2(r1["state"], s2["C0"], s2["C1"])
+    result = s3["m_b"]
+    expected = alice_a & bob_b
+    step_log.append(f"Bob decrypts C_{bob_b} → receives m_{bob_b} = {result}")
+    step_log.append(f"Expected a AND b = {alice_a} AND {bob_b} = {expected}. Match: {result == expected}")
+
+    return {
+        "a": alice_a,
+        "b": bob_b,
+        "result": result,
+        "expected": expected,
+        "correct": result == expected,
+        "step_log": step_log,
+        "what_alice_learns": f"Only that OT completed. Alice sent (0, {alice_a}) and received no info about b={bob_b}.",
+        "what_bob_learns": f"Only m_b = a AND b = {result}. Bob doesn't learn a={alice_a} directly.",
+    }
+
+
+def run_all_and_combos(bits: int = 256) -> dict:
+    """PA #19: Run all 4 input combinations for AND gate and verify truth table."""
+    results = []
+    for a in (0, 1):
+        for b in (0, 1):
+            res = and_gate_demo(a, b, bits)
+            results.append({
+                "a": a, "b": b,
+                "result": res["result"],
+                "expected": res["expected"],
+                "correct": res["correct"],
+            })
+    all_correct = all(r["correct"] for r in results)
+    return {"combinations": results, "all_correct": all_correct}
+
+
+# ==============================================================================
+# PA #20: Millionaire trace (returns gate-by-gate trace for frontend animation)
+# ==============================================================================
+
+class TracingSecureDAG(SecureDAG):
+    """SecureDAG that records each gate evaluation for frontend display."""
+    def __init__(self, nodes, inputs_alice, inputs_bob):
+        super().__init__(nodes, inputs_alice, inputs_bob)
+        self.gate_trace = []
+
+    def evaluate(self) -> dict:
+        resolved = set(self.wires.keys())
+        pending = set(self.nodes.keys())
+
+        while pending:
+            progress = False
+            for node in list(pending):
+                op, in1, in2 = self.nodes[node]
+                if (in1 in resolved or in1 is None) and (in2 in resolved or in2 is None):
+                    val1 = self.wires.get(in1, 0)
+                    val2 = self.wires.get(in2, 0) if in2 is not None else 0
+
+                    if op == 'AND':
+                        out = SecureGateSimulator.secure_and(val1, val2)
+                        self.ot_calls += 1
+                    elif op == 'XOR':
+                        out = SecureGateSimulator.secure_xor(val1, val2)
+                    elif op == 'NOT':
+                        out = 1 - val1
+                    else:
+                        out = 0
+
+                    self.wires[node] = out
+                    resolved.add(node)
+                    pending.remove(node)
+                    progress = True
+
+                    self.gate_trace.append({
+                        "wire": node, "op": op,
+                        "in1": in1, "val1": val1,
+                        "in2": in2, "val2": val2 if in2 is not None else None,
+                        "out": out,
+                    })
+
+            if not progress:
+                raise ValueError("DAG contains cycles or missing inputs!")
+
+        return self.wires
+
+
+def run_millionaire_trace(x: int, y: int, n_bits: int = 4) -> dict:
+    """PA #20: Millionaire's Problem with full gate trace for frontend animation."""
+    import time
+    start = time.time()
+
+    nodes, output_wire = build_comparison_circuit(n_bits)
+
+    inputs_alice = {}
+    inputs_bob = {}
+    for i in range(n_bits):
+        bit_pos = n_bits - 1 - i
+        inputs_alice[f'x{i}'] = (x >> bit_pos) & 1
+        inputs_bob[f'y{i}'] = (y >> bit_pos) & 1
+
+    dag = TracingSecureDAG(nodes, inputs_alice, inputs_bob)
+    result = dag.evaluate()
+
+    elapsed = time.time() - start
+    is_greater = result[output_wire]
+
+    result_text = "Alice is richer" if is_greater else ("Equal" if x == y else "Bob is richer")
+
+    return {
+        "x_greater_than_y": bool(is_greater),
+        "result_text": result_text,
+        "ot_calls": dag.ot_calls,
+        "wall_clock_seconds": elapsed,
+        "n_bits": n_bits,
+        "gate_trace": dag.gate_trace,
+        "total_gates": len(dag.gate_trace),
     }
