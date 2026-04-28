@@ -19,8 +19,10 @@ import math
 from app.core.cryptomania import (
     dh_generate_group, DiffieHellmanParticipant,
     rsa_keygen, rsa_enc_textbook, rsa_dec_textbook,
+    pkcs1_v15_pad, rsa_enc_pkcs, rsa_dec_pkcs,
     elgamal_keygen, elgamal_enc, elgamal_dec,
-    rsa_sign, rsa_verify, cca_pkc_enc, cca_pkc_dec
+    rsa_sign, rsa_verify, cca_pkc_enc, cca_pkc_dec,
+    hastad_attack
 )
 from app.core.mpc import (
     SecureGateSimulator, SecureDAG,
@@ -162,6 +164,60 @@ class MPCRequest(BaseModel):
 class GateRequest(BaseModel):
     a: int
     b: int
+
+class DHFullRequest(BaseModel):
+    alice_private: Optional[int] = None
+    bob_private: Optional[int] = None
+    bits: int = 256
+
+class RSAEncTwiceRequest(BaseModel):
+    message: str = "vote_yes"
+    mode: str = "textbook"
+    bits: int = 512
+
+class MillerRabinTestRequest(BaseModel):
+    n: int = 561
+    k: int = 20
+
+class HastadDemoRequest(BaseModel):
+    message: int = 42
+    bits: int = 256
+    use_pkcs: bool = False
+
+class SignDemoRequest(BaseModel):
+    message: str = "Hello, World!"
+    tamper: bool = False
+    raw: bool = False
+    bits: int = 512
+
+class ForgerRequest(BaseModel):
+    m1: str = "hello"
+    m2: str = "world"
+    bits: int = 512
+
+class ElGamalEncRequest(BaseModel):
+    message: int = 100
+    bits: int = 256
+
+class ElGamalMalRequest(BaseModel):
+    message: int = 100
+    bits: int = 256
+    factor: int = 2
+
+class CCAPKCDemoRequest(BaseModel):
+    message: int = 42
+    tamper: bool = False
+    bits: int = 256
+
+class SigVerifyRequest(BaseModel):
+    message: str
+    sig_hex: str
+    N_str: str
+    e_int: int = 65537
+    tamper: bool = False
+
+class ElGamalCPARequest(BaseModel):
+    bits: int = 256
 
 # ── Game state storage (in-memory) ──
 _cpa_games = {}
@@ -509,9 +565,10 @@ def rsa_demo(req: RSARequest):
         pub, priv = rsa_keygen(req.bits)
         ct = rsa_enc_textbook(pub, req.message)
         pt = rsa_dec_textbook(priv, ct)
+        N, e = pub
         return {
-            "n_prefix": str(pub[1])[:40] + "...",
-            "e": pub[0],
+            "n_prefix": str(N)[:40] + "...",
+            "e": e,
             "ciphertext": str(ct)[:40] + "...",
             "decrypted": pt,
             "correct": pt == req.message
@@ -523,9 +580,10 @@ def rsa_demo(req: RSARequest):
 @app.post("/api/elgamal/demo")
 def elgamal_demo(req: ElGamalRequest):
     try:
-        pub, priv = elgamal_keygen(req.bits)
+        p, q, g = dh_generate_group(req.bits)
+        pub, priv = elgamal_keygen(p, q, g)
         c1, c2 = elgamal_enc(pub, req.message)
-        pt = elgamal_dec(priv, pub, c1, c2)
+        pt = elgamal_dec(priv, (c1, c2))
         return {
             "ciphertext_c1": str(c1)[:40] + "...",
             "ciphertext_c2": str(c2)[:40] + "...",
@@ -827,6 +885,340 @@ def cca_malleability_demo(req: BitFlipRequest):
             },
             "flip_byte": req.flip_byte, "flip_bit": req.flip_bit
         }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#11: DH Full Exchange (Detailed Demo) ──────────────────────────
+@app.post("/api/dh/full_exchange")
+def dh_full_exchange(req: DHFullRequest):
+    try:
+        from app.core.math_core import fast_mod_exp as fme
+        p, q, g = dh_generate_group(req.bits)
+        alice = DiffieHellmanParticipant(p, q, g)
+        bob = DiffieHellmanParticipant(p, q, g)
+        if req.alice_private is not None:
+            alice.private_exponent = req.alice_private % q
+            alice.public_value = fme(g, alice.private_exponent, p)
+        if req.bob_private is not None:
+            bob.private_exponent = req.bob_private % q
+            bob.public_value = fme(g, bob.private_exponent, p)
+        shared_alice = alice.compute_shared_secret(bob.public_value)
+        shared_bob = bob.compute_shared_secret(alice.public_value)
+        pa = str(alice.public_value); pb = str(bob.public_value)
+        sa = str(shared_alice); sb = str(shared_bob)
+        return {
+            "p": str(p), "q": str(q), "g": str(g),
+            "alice_private": str(alice.private_exponent),
+            "alice_public": pa[:30] + ("..." if len(pa) > 30 else ""),
+            "bob_private": str(bob.private_exponent),
+            "bob_public": pb[:30] + ("..." if len(pb) > 30 else ""),
+            "shared_alice": sa[:30] + ("..." if len(sa) > 30 else ""),
+            "shared_bob": sb[:30] + ("..." if len(sb) > 30 else ""),
+            "shared_match": shared_alice == shared_bob,
+            "p_bits": p.bit_length()
+        }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/dh/mitm_demo")
+def dh_mitm_demo(req: DHFullRequest):
+    try:
+        from app.core.math_core import fast_mod_exp as fme
+        p, q, g = dh_generate_group(req.bits)
+        alice = DiffieHellmanParticipant(p, q, g)
+        bob = DiffieHellmanParticipant(p, q, g)
+        q_bytes = (q.bit_length() + 7) // 8
+        eve_private = int.from_bytes(os.urandom(q_bytes), 'big') % q
+        eve_public = fme(g, eve_private, p)
+        k_alice = fme(eve_public, alice.private_exponent, p)
+        k_bob = fme(eve_public, bob.private_exponent, p)
+        k_eve_alice = fme(alice.public_value, eve_private, p)
+        k_eve_bob = fme(bob.public_value, eve_private, p)
+        def sh(v): s = str(v); return s[:20] + ("..." if len(s) > 20 else "")
+        return {
+            "p_bits": p.bit_length(),
+            "alice_public": sh(alice.public_value),
+            "bob_public": sh(bob.public_value),
+            "eve_public": sh(eve_public),
+            "alice_thinks_K": sh(k_alice),
+            "bob_thinks_K": sh(k_bob),
+            "eve_key_with_alice": sh(k_eve_alice),
+            "eve_key_with_bob": sh(k_eve_bob),
+            "alice_eve_match": k_alice == k_eve_alice,
+            "bob_eve_match": k_bob == k_eve_bob,
+            "mitm_success": k_alice == k_eve_alice and k_bob == k_eve_bob
+        }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#12: RSA Encrypt Twice Demo ─────────────────────────────────────
+@app.post("/api/rsa/encrypt_twice")
+def rsa_encrypt_twice(req: RSAEncTwiceRequest):
+    try:
+        pub, priv = rsa_keygen(req.bits)
+        N, e = pub
+        m_bytes = req.message.encode()
+        m_int = int.from_bytes(m_bytes, 'big')
+        n_bytes_count = (N.bit_length() + 7) // 8
+        def trunc(s, n=60): return s[:n] + ("..." if len(s) > n else "")
+        if req.mode == "textbook":
+            ct1 = rsa_enc_textbook(pub, m_int)
+            ct2 = rsa_enc_textbook(pub, m_int)
+            identical = ct1 == ct2
+            return {
+                "mode": "textbook", "message": req.message,
+                "ct1": trunc(str(ct1)), "ct2": trunc(str(ct2)),
+                "identical": identical, "N_bits": N.bit_length(),
+                "banner": "IDENTICAL ciphertexts — plaintext leaked!" if identical else "Different"
+            }
+        else:
+            pad1 = pkcs1_v15_pad(m_bytes, n_bytes_count)
+            pad2 = pkcs1_v15_pad(m_bytes, n_bytes_count)
+            ct1 = rsa_enc_textbook(pub, int.from_bytes(pad1, 'big'))
+            ct2 = rsa_enc_textbook(pub, int.from_bytes(pad2, 'big'))
+            def get_ps(pad):
+                for i in range(2, len(pad)):
+                    if pad[i] == 0x00:
+                        return pad[2:i].hex()
+                return ""
+            return {
+                "mode": "pkcs", "message": req.message,
+                "ct1": trunc(str(ct1)), "ct2": trunc(str(ct2)),
+                "identical": ct1 == ct2, "N_bits": N.bit_length(),
+                "ps1_hex": get_ps(pad1)[:32], "ps2_hex": get_ps(pad2)[:32],
+                "banner": "Different ciphertexts — random padding prevents determinism"
+            }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#13: Miller-Rabin Detailed Test ────────────────────────────────
+@app.post("/api/miller_rabin/test")
+def miller_rabin_test_detailed(req: MillerRabinTestRequest):
+    try:
+        import time as time_mod
+        from app.core.math_core import fast_mod_exp as fme
+        start = time_mod.time()
+        n = req.n; k = min(req.k, 40)
+        if n < 2:
+            return {"result": "COMPOSITE", "reason": "n < 2", "time_ms": 0, "witnesses": [], "n_bits": 1}
+        if n in (2, 3):
+            return {"result": "PROBABLY_PRIME", "reason": "trivially prime", "time_ms": 0, "witnesses": [], "n_bits": n.bit_length()}
+        if n % 2 == 0:
+            return {"result": "COMPOSITE", "reason": "even number", "time_ms": 0, "witnesses": [], "n_bits": n.bit_length()}
+        r, d = 0, n - 1
+        while d % 2 == 0: r += 1; d //= 2
+        witnesses = []; result = "PROBABLY_PRIME"
+        for _ in range(k):
+            byte_len = max(((n - 2).bit_length() + 7) // 8, 1)
+            a = 0; attempts = 0
+            while (a < 2 or a > n - 2) and attempts < 1000:
+                a = int.from_bytes(os.urandom(byte_len), 'big') % (n - 1); attempts += 1
+            if a < 2: a = 2
+            x = fme(a, d, n); composite = True
+            if x == 1 or x == n - 1:
+                composite = False
+            else:
+                for _ in range(r - 1):
+                    x = fme(x, 2, n)
+                    if x == n - 1: composite = False; break
+            witnesses.append({"a": str(a), "verdict": "WITNESS (composite)" if composite else "passed"})
+            if composite: result = "COMPOSITE"; break
+        elapsed_ms = (time_mod.time() - start) * 1000
+        return {
+            "n": str(n), "result": result, "rounds_run": len(witnesses),
+            "rounds_requested": k, "r": r, "d": str(d),
+            "time_ms": round(elapsed_ms, 2), "witnesses": witnesses[:20], "n_bits": n.bit_length()
+        }
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#14: Håstad Broadcast Attack Demo ───────────────────────────────
+@app.post("/api/hastad/demo")
+def hastad_demo(req: HastadDemoRequest):
+    try:
+        from app.core.math_core import crt, integer_nth_root
+        m = req.message; recipients = []; ciphertexts = []; moduli = []
+        for i in range(3):
+            pub, priv = rsa_keygen(req.bits, e=3)
+            N, e = pub
+            if req.use_pkcs:
+                nb = (N.bit_length() + 7) // 8
+                mb = m.to_bytes(max(1, (m.bit_length() + 7) // 8), 'big')
+                padded = pkcs1_v15_pad(mb, nb)
+                ct = rsa_enc_textbook(pub, int.from_bytes(padded, 'big'))
+            else:
+                ct = rsa_enc_textbook(pub, m)
+            recipients.append({"index": i+1, "N": str(N)[:30]+"...", "N_bits": N.bit_length(), "e": e, "ciphertext": str(ct)[:30]+"..."})
+            ciphertexts.append(ct); moduli.append(N)
+        if req.use_pkcs:
+            return {"recipients": recipients, "attack_attempted": True, "attack_success": False, "use_pkcs": True,
+                    "note": "PKCS#1 padding randomizes the plaintext — CRT recovers garbage, not m^3. Attack fails."}
+        crt_result = crt(ciphertexts, moduli)
+        cube_root = integer_nth_root(crt_result, 3)
+        return {"recipients": recipients, "crt_result": str(crt_result)[:40]+"...",
+                "cube_root": cube_root, "original_message": m,
+                "attack_success": cube_root == m, "use_pkcs": False}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#15: Digital Signatures Demo ────────────────────────────────────
+@app.post("/api/signatures/demo")
+def signatures_demo(req: SignDemoRequest):
+    """Sign a message. Returns full sig_hex, hash_hex, N_str, e_int for use in verify_detail."""
+    try:
+        from app.core.minicrypt import dlp_hash as dlph
+        pub, priv = rsa_keygen(req.bits)
+        N, e = pub
+        m_bytes = req.message.encode()
+        if req.raw:
+            nb = (N.bit_length() + 7) // 8
+            m_int = int.from_bytes(m_bytes[:nb - 1], 'big') % N
+            sig = rsa_dec_textbook(priv, m_int)
+            sb = sig.to_bytes(max(1, (sig.bit_length() + 7) // 8), 'big')
+            return {"message": req.message, "raw": True, "N_bits": N.bit_length(),
+                    "N_str": str(N), "e_int": e,
+                    "signature_hex": sb.hex(), "signature": sb.hex()[:30]+"...",
+                    "valid": True, "note": "Raw RSA (no hash) — vulnerable to multiplicative forgery"}
+        h = dlph(m_bytes, 32)
+        sig = rsa_sign(priv, m_bytes)
+        sb = sig.to_bytes(max(1, (sig.bit_length() + 7) // 8), 'big')
+        return {"message": req.message, "raw": False, "N_bits": N.bit_length(),
+                "N_str": str(N), "e_int": e,
+                "hash_hex": h.hex(), "signature_hex": sb.hex(),
+                "signature": sb.hex()[:30]+"...", "valid": True}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/signatures/verify_detail")
+def signatures_verify_detail(req: SigVerifyRequest):
+    """Verify a signature with full intermediate values. Supports tamper flag to flip first byte of message."""
+    try:
+        from app.core.minicrypt import dlp_hash as dlph
+        from app.core.math_core import fast_mod_exp as fme
+        m_bytes = req.message.encode()
+        if req.tamper:
+            ta = bytearray(m_bytes)
+            if ta: ta[0] ^= 0x01
+            m_bytes = bytes(ta)
+        N = int(req.N_str); e = req.e_int
+        sig = int(req.sig_hex, 16)
+        h = dlph(m_bytes, 32)
+        h_int = int.from_bytes(h, 'big')
+        sigma_e = fme(sig, e, N)
+        valid = sigma_e == h_int
+        def sh(v): s=hex(v); return s[:28]+("..." if len(s)>28 else "")
+        return {"message": req.message, "tampered": req.tamper, "N_bits": N.bit_length(),
+                "hash_of_message": h.hex()[:40]+"...",
+                "sigma_e_mod_N": sh(sigma_e),
+                "h_int_prefix": sh(h_int),
+                "match": valid, "valid": valid}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/signatures/forgery")
+def multiplicative_forgery_demo(req: ForgerRequest):
+    try:
+        pub, priv = rsa_keygen(req.bits)
+        N, e = pub; nb = (N.bit_length() + 7) // 8
+        m1_int = int.from_bytes(req.m1.encode()[:nb - 1], 'big') % N
+        m2_int = int.from_bytes(req.m2.encode()[:nb - 1], 'big') % N
+        sig1 = rsa_dec_textbook(priv, m1_int)
+        sig2 = rsa_dec_textbook(priv, m2_int)
+        forged_sig = (sig1 * sig2) % N
+        forged_m = (m1_int * m2_int) % N
+        valid = rsa_enc_textbook(pub, forged_sig) == forged_m
+        def sh(v): s=str(v); return s[:20]+("..." if len(s)>20 else "")
+        return {"m1": req.m1, "m2": req.m2, "m1_int": sh(m1_int), "m2_int": sh(m2_int),
+                "forged_m": sh(forged_m), "sig1": sh(sig1), "sig2": sh(sig2),
+                "forged_sig": sh(forged_sig), "forgery_valid": valid,
+                "explanation": "sig1 × sig2 mod N = (m1×m2)^d mod N — forged without knowing d!"}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#16: ElGamal Encrypt & Malleability Demo ────────────────────────
+@app.post("/api/elgamal/encrypt")
+def elgamal_encrypt_demo(req: ElGamalEncRequest):
+    try:
+        p, q, g = dh_generate_group(req.bits)
+        pub, priv = elgamal_keygen(p, q, g)
+        c1, c2 = elgamal_enc(pub, req.message)
+        decrypted = elgamal_dec(priv, (c1, c2))
+        pk_p, pk_q, pk_g, pk_h = pub; sk_p, sk_q, sk_g, sk_x = priv
+        def sh(v): s=str(v); return s[:30]+("..." if len(s)>30 else "")
+        return {"p": sh(p), "g": sh(g), "public_h": sh(pk_h), "private_x": sh(sk_x),
+                "message": req.message, "c1": sh(c1), "c2": sh(c2),
+                "decrypted": decrypted, "correct": decrypted == req.message}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/elgamal/malleable")
+def elgamal_malleable_demo(req: ElGamalMalRequest):
+    try:
+        p, q, g = dh_generate_group(req.bits)
+        pub, priv = elgamal_keygen(p, q, g)
+        c1, c2 = elgamal_enc(pub, req.message)
+        c2_mod = (c2 * req.factor) % p
+        dec_orig = elgamal_dec(priv, (c1, c2))
+        dec_mod = elgamal_dec(priv, (c1, c2_mod))
+        expected = (req.message * req.factor) % p
+        def sh(v): s=str(v); return s[:30]+("..." if len(s)>30 else "")
+        return {"message": req.message, "factor": req.factor,
+                "c1": sh(c1), "c2": sh(c2), "c2_modified": sh(c2_mod),
+                "decrypted_original": dec_orig, "decrypted_modified": dec_mod,
+                "expected_modified": expected, "malleable": dec_mod == expected,
+                "explanation": f"Dec(c1, {req.factor}·c2 mod p) = {req.factor}·m — ElGamal is malleable!"}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+# ── PA#17: CCA-Secure PKC (Encrypt-then-Sign) ─────────────────────────
+@app.post("/api/elgamal/cpa_game")
+def elgamal_cpa_game(req: ElGamalCPARequest):
+    """CPA game showing CCA failure: adversary uses decryption oracle with malleable ciphertext to learn m."""
+    try:
+        from app.core.math_core import mod_inverse as modinv
+        p, q, g = dh_generate_group(req.bits)
+        pub, priv = elgamal_keygen(p, q, g)
+        # Challenger picks a small random m for readability
+        m = int.from_bytes(os.urandom(2), 'big') % 900 + 50
+        c1, c2 = elgamal_enc(pub, m)
+        # Adversary: submit (c1, 2*c2 mod p) to decryption oracle
+        c2_mod = (c2 * 2) % p
+        oracle_resp = elgamal_dec(priv, (c1, c2_mod))
+        # Recover m = oracle_resp / 2 mod p
+        two_inv = modinv(2, p)
+        recovered = (oracle_resp * two_inv) % p
+        def sh(v): s=str(v); return s[:20]+("..." if len(s)>20 else "")
+        return {"p_bits": p.bit_length(), "challenge_m": m,
+                "c1": sh(c1), "c2": sh(c2), "c2_modified": sh(c2_mod),
+                "oracle_response": oracle_resp, "expected_2m": (m * 2) % p,
+                "recovered_m": recovered, "attack_success": recovered == m}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+@app.post("/api/cca_pkc/demo")
+def cca_pkc_demo_endpoint(req: CCAPKCDemoRequest):
+    try:
+        p, q, g = dh_generate_group(req.bits)
+        elg_pub, elg_priv = elgamal_keygen(p, q, g)
+        rsa_pub, rsa_priv = rsa_keygen(req.bits)
+        package = cca_pkc_enc(elg_pub, rsa_priv, req.message)
+        c, sig = package; c1, c2 = c
+        def sh(v): s=str(v); return s[:20]+("..." if len(s)>20 else "")
+        if req.tamper:
+            c_tampered = (c1, (c2 * 2) % p)
+            dec_cca = cca_pkc_dec(elg_priv, rsa_pub, (c_tampered, sig))
+            dec_plain = elgamal_dec(elg_priv, c_tampered)
+            return {"message": req.message, "tampered": True,
+                    "c1": sh(c1), "c2_original": sh(c2), "c2_tampered": sh(c_tampered[1]),
+                    "signature": sh(sig),
+                    "cca_result": dec_cca, "cca_rejected": dec_cca is None,
+                    "cca_message": "Signature invalid — decryption aborted. Output ⊥" if dec_cca is None else "Accepted",
+                    "plain_elgamal_result": dec_plain,
+                    "plain_elgamal_note": f"Plain ElGamal returns {dec_plain} (= 2×{req.message} mod p)"}
+        dec = cca_pkc_dec(elg_priv, rsa_pub, package)
+        return {"message": req.message, "tampered": False,
+                "c1": sh(c1), "c2": sh(c2), "signature": sh(sig),
+                "decrypted": dec, "correct": dec == req.message}
     except Exception as e:
         raise HTTPException(400, str(e))
 

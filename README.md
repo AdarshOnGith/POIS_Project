@@ -158,9 +158,19 @@ Navigate to `http://localhost:8000/docs` for the Swagger API interface.
 | `/api/hmac/compute` | POST | PA#10: HMAC computation |
 | `/api/prp/encrypt` | POST | Luby-Rackoff PRP encrypt |
 | `/api/prp/decrypt` | POST | Luby-Rackoff PRP decrypt |
-| `/api/dh/exchange` | POST | PA#11: DH key exchange |
-| `/api/rsa/demo` | POST | PA#12: RSA enc/dec demo |
+| `/api/dh/exchange` | POST | PA#11: Basic DH exchange |
+| `/api/dh/full_exchange` | POST | PA#11: Detailed DH (all intermediate values) |
+| `/api/dh/mitm_demo` | POST | PA#11: MITM Eve attack demo |
+| `/api/rsa/demo` | POST | PA#12: RSA enc/dec roundtrip |
+| `/api/rsa/encrypt_twice` | POST | PA#12: Determinism vs PKCS#1 demo |
+| `/api/miller_rabin/test` | POST | PA#13: Primality test with witness table |
+| `/api/hastad/demo` | POST | PA#14: Håstad broadcast attack (3 recipients) |
+| `/api/signatures/demo` | POST | PA#15: Sign / verify / tamper |
+| `/api/signatures/forgery` | POST | PA#15: Multiplicative forgery (raw RSA) |
 | `/api/elgamal/demo` | POST | PA#16: ElGamal enc/dec |
+| `/api/elgamal/encrypt` | POST | PA#16: ElGamal encrypt (full detail) |
+| `/api/elgamal/malleable` | POST | PA#16: Malleability demo (k·c₂) |
+| `/api/cca_pkc/demo` | POST | PA#17: Encrypt-then-Sign + tamper demo |
 | `/api/mpc/and` | POST | PA#19: Secure AND gate |
 | `/api/mpc/xor` | POST | PA#19: Free Secure XOR |
 | `/api/mpc/millionaire` | POST | PA#20: Millionaire's Problem |
@@ -276,3 +286,51 @@ Here are some toy parameters you can copy and paste into the interactive web exp
 ### PA#10: HMAC vs Naive MAC
 *   **Original Message m**: `48656c6c6f`
 *   **Attacker Append m'**: `41747461636b`
+
+### PA#11: Diffie-Hellman Key Exchange
+*   Leave both private exponent fields **blank** (random) and click **↔ Exchange**
+*   Both panels show `K = g^ab mod p` highlighted in green — keys match
+*   Check **Enable Eve (MITM)**: Eve intercepts, both secret-matches turn red showing she holds both session keys
+*   Toy parameters: 64-bit safe prime (p ≈ 2^64) — exchange completes in < 2 s
+
+### PA#12: Textbook RSA Determinism Attack
+*   Message: `yes` (simulating a vote), Mode: **Textbook RSA** → click **🔒 Encrypt Twice**
+*   Expected: 🚨 red banner "IDENTICAL ciphertexts — plaintext leaked!"
+*   Switch to **PKCS#1 v1.5** → click **🔒 Encrypt Twice**
+*   Expected: ✓ green banner "Different ciphertexts"; the PS₁ and PS₂ byte panels differ each run
+*   Toy parameters: 512-bit N (instant)
+
+### PA#13: Miller-Rabin Primality Test
+| Input | Rounds | Expected Output |
+|-------|--------|-----------------|
+| `561` | 1 | **COMPOSITE** — Carmichael number (fools Fermat, caught by MR) |
+| `1729` | 5 | **COMPOSITE** — smallest taxicab/Carmichael-2 number |
+| `104729` | 20 | **PROBABLY PRIME** |
+| `7` | 40 | **PROBABLY PRIME** (trivial) |
+| `100` | 1 | **COMPOSITE** — even, caught immediately |
+
+### PA#14: CRT + Håstad Broadcast Attack
+*   Message: `42`, **PKCS toggle OFF** → click **⚔ Launch Attack**
+*   Three recipient panels appear (each 64-bit N with e = 3)
+*   Click **∛ Compute Cube Root** → recovered m = **42** (attack succeeded)
+*   Toggle **Use PKCS#1 padding** → re-run → cube root returns garbage (attack fails)
+*   Toy parameters: 64-bit Nᵢ (instant computation)
+
+### PA#15: Digital Signatures
+*   Message: `Hello, World!`, Mode: **Hash-then-Sign** → click **✍ Sign**
+*   Signature σ = H(m)^d mod N shown in hex
+*   Click **🔧 Tamper message → verify** → verification immediately fails (hashes differ)
+*   Switch tab to **Multiplicative Forgery**, m₁ = `hello`, m₂ = `world` → click **🔨 Forge signature**
+*   Expected: "Forgery Succeeded!" — σ(m₁)×σ(m₂) is a valid signature on m₁×m₂ without knowing d
+
+### PA#16: ElGamal Malleability
+*   Message: `100`, Factor: `2` → click **🔒 Encrypt** then **×2 c₂ → Decrypt**
+*   Expected: Decrypted modified = **200** (= 2×100); success rate counter climbs to 100%
+*   Confirm: Dec(c₁, k·c₂) = k·Dec(c₁, c₂) for any k — ElGamal is multiplicatively homomorphic
+
+### PA#17: CCA-Secure PKC (Encrypt-then-Sign)
+*   Message: `42` → click **🔒 Encrypt-then-Sign** — package (C_E, σ) shown
+*   Click **🔧 Tamper C_E → Oracle**:
+    *   **CCA side**: "Signature invalid — decryption aborted. Output ⊥"
+    *   **Plain ElGamal contrast panel**: returns `84` (= 2×42) — malleable!
+*   Any tampered ciphertext → ⊥. Untampered → decrypts correctly.

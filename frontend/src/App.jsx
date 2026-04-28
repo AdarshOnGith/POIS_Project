@@ -11,6 +11,13 @@ import PA7_MD from './components/PA7_MD'
 import PA8_DLP from './components/PA8_DLP'
 import PA9_Birthday from './components/PA9_Birthday'
 import PA10_HMAC from './components/PA10_HMAC'
+import PA11_DH from './components/PA11_DH'
+import PA12_RSA from './components/PA12_RSA'
+import PA13_MillerRabin from './components/PA13_MillerRabin'
+import PA14_CRT from './components/PA14_CRT'
+import PA15_Signatures from './components/PA15_Signatures'
+import PA16_ElGamal from './components/PA16_ElGamal'
+import PA17_CCAPKC from './components/PA17_CCAPKC'
 
 const API = 'http://localhost:8000/api'
 const post = async (p,b) => { const r = await fetch(`${API}/${p}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); return r.json() }
@@ -68,26 +75,13 @@ function getPanel(id) {
     case 'pa8': return <PA8_DLP />
     case 'pa9': return <PA9_Birthday />
     case 'pa10': return <PA10_HMAC />
-    case 'pa11': return <ApiDemo title="🤝 PA#11: Diffie-Hellman" subtitle="DH key exchange with safe prime group."
-      fields={[]} endpoint="dh/exchange" buildBody={()=>({})} />
-    case 'pa12': return <ApiDemo title="🔑 PA#12: RSA" subtitle="Textbook RSA + PKCS#1 v1.5 padding."
-      fields={[{key:'msg',label:'Message (int)',default:'12345',type:'number'},{key:'bits',label:'Bits',default:'512',type:'number',width:'80px'}]}
-      endpoint="rsa/demo" buildBody={v=>({message:parseInt(v.msg),bits:parseInt(v.bits)})} />
-    case 'pa13': return <ApiDemo title="🧪 PA#13: Miller-Rabin" subtitle="Probabilistic primality test."
-      fields={[{key:'msg',label:'Number',default:'561',type:'number'}]}
-      endpoint="rsa/demo" buildBody={v=>({message:parseInt(v.msg),bits:256})} />
-    case 'pa14': return <ApiDemo title="📡 PA#14: CRT + Håstad" subtitle="Chinese Remainder Theorem + Håstad Broadcast Attack."
-      fields={[{key:'msg',label:'Plaintext',default:'424242',type:'number'}]}
-      endpoint="rsa/demo" buildBody={v=>({message:parseInt(v.msg),bits:512})} />
-    case 'pa15': return <ApiDemo title="✍️ PA#15: Signatures" subtitle="Hash-then-Sign RSA."
-      fields={[{key:'msg',label:'Message',default:'42',type:'number'}]}
-      endpoint="rsa/demo" buildBody={v=>({message:parseInt(v.msg),bits:512})} />
-    case 'pa16': return <ApiDemo title="🔒 PA#16: ElGamal" subtitle="ElGamal encryption + malleability demo."
-      fields={[{key:'msg',label:'Message',default:'100',type:'number'},{key:'bits',label:'Bits',default:'512',type:'number',width:'80px'}]}
-      endpoint="elgamal/demo" buildBody={v=>({message:parseInt(v.msg),bits:parseInt(v.bits)})} />
-    case 'pa17': return <ApiDemo title="🛡️ PA#17: CCA-PKC" subtitle="Encrypt-then-Sign (ElGamal + RSA)."
-      fields={[{key:'msg',label:'Message',default:'100',type:'number'}]}
-      endpoint="elgamal/demo" buildBody={v=>({message:parseInt(v.msg),bits:512})} />
+    case 'pa11': return <PA11_DH />
+    case 'pa12': return <PA12_RSA />
+    case 'pa13': return <PA13_MillerRabin />
+    case 'pa14': return <PA14_CRT />
+    case 'pa15': return <PA15_Signatures />
+    case 'pa16': return <PA16_ElGamal />
+    case 'pa17': return <PA17_CCAPKC />
     case 'pa18': return <ApiDemo title="🔒 PA#18: Oblivious Transfer" subtitle="1-out-of-2 OT via RSA."
       fields={[{key:'a',label:'Alice bit',default:'1',type:'number',width:'80px'},{key:'b',label:'Bob bit',default:'0',type:'number',width:'80px'}]}
       endpoint="mpc/and" buildBody={v=>({a:parseInt(v.a),b:parseInt(v.b)})} />
