@@ -473,8 +473,8 @@ def ot_sender_step(pk0: dict, pk1: dict, m0: int, m1: int) -> dict:
     elg_pk1 = (pk1["p"], pk1["q"], pk1["g"], pk1["h"])
 
     p = pk0["p"]
-    m0_val = max(1, m0 % p)
-    m1_val = max(1, m1 % p)
+    m0_val = m0 % p
+    m1_val = m1 % p
 
     c0 = elgamal_enc(elg_pk0, m0_val)
     c1 = elgamal_enc(elg_pk1, m1_val)
